@@ -7,40 +7,33 @@ use libp2p::{
     tcp::TcpConfig
 };
 
+use tokio::runtime::current_thread::Runtime;
+
+
 fn main() {
 
     let tcp_transport = TcpConfig::new();
     let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8080".parse().expect("invalid multiaddr");
+    let mut rt = Runtime::new().unwrap();
+    let handle = rt.handle();
 
-    //let _outgoing_connec = tcp_transport.dial(addr)
-    let _outgoing_connec = tcp_transport.listen_on(addr).unwrap().0
-        .map_err(|e| println!("err={:?}", e))
-        .for_each(|(sock, _)| {
-            println!("{:?}", sock);
-            // No split here now.
-            sock.and_then(|sock| {
 
-                let (reader, mut writer) = sock.split();
+    let listener = tcp_transport.listen_on(addr).unwrap().0.for_each(|(sock, _)| {
+        println!("{:?}", sock);
+        sock.and_then(|sock| {
+            let handle_conn = io::read_exact(sock, [0; 3])
+            .map(|(_, buf)| {
+                assert_eq!(buf, [1, 2, 3]);
+                println!("{:?}", buf);
+            })
+            .map_err(|err| panic!("IO error {:?}", err));
 
-                let amt = io::copy(reader, writer);
-                let msg = amt.then(move |result| {
-                    match result {
-                        Ok((amt, _, _)) => println!("wrote {} bytes", amt),
-                        Err(e) => println!("error: {}", e),
-                    }
-
-                    Ok(())
-                });
-
-                tokio::spawn(msg);
-
-                Ok(())
-            });
+            handle.spawn(handle_conn).unwrap();
 
             Ok(())
-        });
+        })
+    });
 
-
-    tokio::run(_outgoing_connec.map_err(|e| println!("{:?}", e)));
-
+    rt.block_on(listener).unwrap();
+    rt.run().unwrap();
 }

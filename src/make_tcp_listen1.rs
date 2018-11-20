@@ -14,9 +14,7 @@ fn main() {
     let tcp_transport = TcpConfig::new();
     let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8080".parse().expect("invalid multiaddr");
 
-    //let _outgoing_connec = tcp_transport.dial(addr)
     let _outgoing_connec = tcp_transport.listen_on(addr).unwrap().0
-        .map_err(|e| println!("err={:?}", e))
         .for_each(|(sock, _)| {
             println!("{:?}", sock);
             // No split here now.
@@ -45,18 +43,6 @@ fn main() {
 
                 tokio::spawn(processor);
 
-                //let amt = io::copy(reader, writer);
-                //let msg = amt.then(move |result| {
-                //    match result {
-                //        Ok((amt, _, _)) => println!("wrote {} bytes", amt),
-                //        Err(e) => println!("error: {}", e),
-                //    }
-
-                //    Ok(())
-                //});
-
-                //tokio::spawn(writer);
-
                 Ok(())
             });
 
@@ -65,6 +51,4 @@ fn main() {
 
 
     tokio::run(_outgoing_connec.map_err(|e| println!("{:?}", e)));
-
-    //println!("Hello, world!");
 }

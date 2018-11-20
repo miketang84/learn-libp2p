@@ -6,47 +6,46 @@ use libp2p::{
     Transport,
     tcp::TcpConfig
 };
-
+use tokio_codec::BytesCodec;
+use tokio::codec::Decoder;
 
 fn main() {
 
     let tcp_transport = TcpConfig::new();
-    let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8088".parse().expect("invalid multiaddr");
+    let addr: Multiaddr = "/ip4/127.0.0.1/tcp/8080".parse().expect("invalid multiaddr");
 
-    //let _outgoing_connec = tcp_transport.dial(addr)
-    let _outgoing_connec = tcp_transport.listen_on(addr).unwrap().0
-        .map_err(|e| println!("err={:?}", e))
-        .for_each(|(sock, _)| {
+    let listener = tcp_transport.listen_on(addr).unwrap().0.for_each(|(sock, _)| {
             println!("{:?}", sock);
-            // No split here now.
-            //let (reader, writer) = socket.split();
-            //let amt = io::copy(reader, writer);
+            sock.and_then(|sock| {
+                let framed = BytesCodec::new().framed(sock);
+                let (sink, stream) = framed.split();
 
-            //let msg = amt.then(move |result| {
-            //    match result {
-            //        Ok((amt, _, _)) => println!("wrote {} bytes", amt),
-            //    Err(e) => println!("error: {}", e),
-            //    }
+                let processor = stream 
+                .for_each(|bytes| {
+                    println!("bytes: {:?}", bytes);
+                    Ok(())
+                })
+                .and_then(|()| {
+                    println!("Socket received FIN packet and closed connection");
+                    Ok(())
+                })
+                .or_else(|err| {
+                    println!("Socket closed with error: {:?}", err);
+                    Err(err)
+                })
+                .then(|result| {
+                    println!("Socket closed with result: {:?}", result);
+                    Ok(())
+                });
 
-            //    Ok(())
-            //});
+                tokio::spawn(processor);
 
-            //tokio::spawn(msg);
+                Ok(())
+            })
 
-            //sock.and_then(|sock| {
-            //    let handle_conn = io::read_exact(sock, [0; 3])
-            //    .map(|(_, buf)| println!("{:?}", buf))
-            //    .map_err(|err| panic!("IO error {:?}", err));
-
-            //    tokio::spawn(handle_conn).map_err(|_| ())
-
-            //})
-            //.map_err(|_| ())
-            Ok(())
         });
 
 
-    tokio::run(_outgoing_connec.map_err(|e| println!("{:?}", e)));
-
-    //println!("Hello, world!");
+    tokio::run(listener.map_err(|e|println!("{:?}", e)));
 }
+
