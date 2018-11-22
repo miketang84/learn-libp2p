@@ -5,10 +5,10 @@ authors = ["Mike Tang <daogangtang@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+futures = "*"
 tokio = "*"
-tokio-codec = "*"
 libp2p = { git = "https://github.com/libp2p/rust-libp2p" }
-
+tokio-stdin-stdout = "*"
 
 [[bin]]
 name = "make_tcp_transport"
@@ -17,3 +17,7 @@ path = "src/make_tcp_transport.rs"
 [[bin]]
 name = "make_tcp_listen"
 path = "src/make_tcp_listen.rs"
+
+[[bin]]
+name = "chat"
+path = "src/chat.rs"

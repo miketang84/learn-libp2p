@@ -6,7 +6,7 @@ use libp2p::{
     Transport,
     tcp::TcpConfig
 };
-use tokio_codec::BytesCodec;
+use tokio::codec::BytesCodec;
 use tokio::codec::Decoder;
 
 fn main() {
