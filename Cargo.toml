@@ -7,7 +7,8 @@ edition = "2018"
 [dependencies]
 futures = "*"
 tokio = "*"
-libp2p = { git = "https://github.com/libp2p/rust-libp2p" }
+#libp2p = { git = "https://github.com/libp2p/rust-libp2p" }
+libp2p = { path = "../rust-libp2p" }
 tokio-stdin-stdout = "*"
 env_logger = "*"
 
@@ -41,4 +42,12 @@ path = "src/ping_listen2.rs"
 
 [[bin]]
 name = "ping_client2"
+path = "src/ping_client2.rs"
+
+[[bin]]
+name = "ping_listen3"
+path = "src/ping_listen2.rs"
+
+[[bin]]
+name = "ping_client3"
 path = "src/ping_client2.rs"
