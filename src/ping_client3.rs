@@ -12,6 +12,7 @@ use libp2p::{
     yamux,
     tokio_codec::{FramedRead, LinesCodec}
 };
+use libp2p::InboundUpgradeExt;
 
 fn main() {
     env_logger::init();
@@ -24,10 +25,13 @@ fn main() {
     // Set up a an encrypted DNS-enabled TCP Transport over the Mplex protocol
     let transport = libp2p::CommonTransport::new()
         .with_upgrade(secio::SecioConfig::new(local_key))
-        .and_then(move |out, _| {
-            let peer_id = out.remote_key.into_peer_id();
-            let upgrade = yamux::Config::new().map_outbound(move |muxer| (peer_id, muxer) );
-            upgrade::apply_outbound(out.stream, upgrade).map_err(|e| e.into_io_error())
+        .and_then(move |out, cp| {
+            let peer_id1 = out.remote_key.into_peer_id();
+            let peer_id2 = peer_id1.clone();
+            let upgrade = libp2p::yamux::Config::default()
+                .map_inbound(move |muxer| (peer_id1, muxer))
+                .map_outbound(move |muxer| (peer_id2, muxer));
+            upgrade::apply(out.stream, upgrade, cp).map_err(|e| e.into_io_error())
         });
 
     // Create a Swarm to manage peers and events

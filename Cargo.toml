@@ -46,8 +46,8 @@ path = "src/ping_client2.rs"
 
 [[bin]]
 name = "ping_listen3"
-path = "src/ping_listen2.rs"
+path = "src/ping_listen3.rs"
 
 [[bin]]
 name = "ping_client3"
-path = "src/ping_client2.rs"
+path = "src/ping_client3.rs"
