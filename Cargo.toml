@@ -9,15 +9,36 @@ futures = "*"
 tokio = "*"
 libp2p = { git = "https://github.com/libp2p/rust-libp2p" }
 tokio-stdin-stdout = "*"
+env_logger = "*"
 
-[[bin]]
-name = "make_tcp_transport"
-path = "src/make_tcp_transport.rs"
+#[[bin]]
+#name = "make_tcp_transport"
+#path = "src/make_tcp_transport.rs"
 
-[[bin]]
-name = "make_tcp_listen"
-path = "src/make_tcp_listen.rs"
+#[[bin]]
+#name = "make_tcp_listen"
+#path = "src/make_tcp_listen.rs"
 
 [[bin]]
 name = "chat"
 path = "src/chat.rs"
+
+#[[bin]]
+#name = "kad"
+#path = "src/kad.rs"
+
+[[bin]]
+name = "ping_listen"
+path = "src/ping_listen.rs"
+
+[[bin]]
+name = "ping_client"
+path = "src/ping_client.rs"
+
+[[bin]]
+name = "ping_listen2"
+path = "src/ping_listen2.rs"
+
+[[bin]]
+name = "ping_client2"
+path = "src/ping_client2.rs"

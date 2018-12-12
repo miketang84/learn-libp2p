@@ -18,35 +18,45 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-//! A basic chat application demonstrating libp2p and the Floodsub protocol.
+//! A basic chat application demonstrating libp2p and the mDNS and floodsub protocols.
 //!
-//! Using two terminal windows, start two instances. Take note of the listening
-//! address of the first instance and start the second with this address as the
-//! first argument. In the first terminal window, run:
-//! ```text
-//! cargo run --example chat
-//! ```
-//! It will print the PeerId and the listening address, e.g. `Listening on
-//! "/ip4/0.0.0.0/tcp/24915"`
-//!
-//! In the second terminal window, start a new instance of the example with:
-//! ```text
-//! cargo run --example chat -- /ip4/127.0.0.1/tcp/24915
-//! ```
-//! The two nodes connect. Type a message in either terminal and hit return: the
-//! message is sent and printed in the other terminal.Close with Ctrl-c.
+//! Using two terminal windows, start two instances. If you local network allows mDNS, 
+//! they will automatically connect. Type a message in either terminal and hit return: the
+//! message is sent and printed in the other terminal. Close with Ctrl-c.
 //!
 //! You can of course open more terminal windows and add more participants.
 //! Dialing any of the other peers will propagate the new participant to all
 //! chat members and everyone will receive all messages.
+//!
+//! # If they don't automatically connect
+//!
+//! If the nodes don't automatically connect, take note of the listening address of the first
+//! instance and start the second with this address as the first argument. In the first terminal
+//! window, run:
+//!
+//! ```sh
+//! cargo run --example chat
+//! ```
+//!
+//! It will print the PeerId and the listening address, e.g. `Listening on
+//! "/ip4/0.0.0.0/tcp/24915"`
+//!
+//! In the second terminal window, start a new instance of the example with:
+//!
+//! ```sh
+//! cargo run --example chat -- /ip4/127.0.0.1/tcp/24915
+//! ```
+//!
+//! The two nodes then connect. 
 
+extern crate env_logger;
 extern crate futures;
 extern crate libp2p;
 extern crate tokio;
 
 use futures::prelude::*;
 use libp2p::{
-    Transport,
+    NetworkBehaviour, Transport,
     core::upgrade::{self, OutboundUpgradeExt},
     secio,
     mplex,
@@ -54,10 +64,12 @@ use libp2p::{
 };
 
 fn main() {
+    env_logger::init();
+
     // Create a random PeerId
     let local_key = secio::SecioKeyPair::ed25519_generated().unwrap();
-    let local_peer_id = local_key.to_peer_id();
-    println!("Local peer id: {:?}", local_peer_id);
+    let local_pub_key = local_key.to_public_key();
+    println!("Local peer id: {:?}", local_pub_key.clone().into_peer_id());
 
     // Set up a an encrypted DNS-enabled TCP Transport over the Mplex protocol
     let transport = libp2p::CommonTransport::new()
@@ -71,18 +83,40 @@ fn main() {
     // Create a Floodsub topic
     let floodsub_topic = libp2p::floodsub::TopicBuilder::new("chat").build();
 
+    // We create a custom network behaviour that combines floodsub and mDNS.
+    // In the future, we want to improve libp2p to make this easier to do.
+    #[derive(NetworkBehaviour)]
+    struct MyBehaviour<TSubstream: libp2p::tokio_io::AsyncRead + libp2p::tokio_io::AsyncWrite> {
+        #[behaviour(handler = "on_floodsub")]
+        floodsub: libp2p::floodsub::Floodsub<TSubstream>,
+        mdns: libp2p::mdns::Mdns<TSubstream>,
+    }
+
+    impl<TSubstream: libp2p::tokio_io::AsyncRead + libp2p::tokio_io::AsyncWrite> MyBehaviour<TSubstream> {
+        // Called when `floodsub` produces an event.
+        fn on_floodsub<TTopology>(&mut self, message: <libp2p::floodsub::Floodsub<TSubstream> as libp2p::core::swarm::NetworkBehaviour<TTopology>>::OutEvent)
+        where TSubstream: libp2p::tokio_io::AsyncRead + libp2p::tokio_io::AsyncWrite
+        {
+            println!("Received: '{:?}' from {:?}", String::from_utf8_lossy(&message.data), message.source);
+        }
+    }
+
     // Create a Swarm to manage peers and events
     let mut swarm = {
-        let mut behaviour = libp2p::floodsub::FloodsubBehaviour::new(local_peer_id);
-        behaviour.subscribe(floodsub_topic.clone());
-        libp2p::Swarm::new(transport, behaviour, libp2p::core::topology::MemoryTopology::empty())
+        let mut behaviour = MyBehaviour {
+            floodsub: libp2p::floodsub::Floodsub::new(local_pub_key.clone().into_peer_id()),
+            mdns: libp2p::mdns::Mdns::new().expect("Failed to create mDNS service"),
+        };
+
+        behaviour.floodsub.subscribe(floodsub_topic.clone());
+        libp2p::Swarm::new(transport, behaviour, libp2p::core::topology::MemoryTopology::empty(), local_pub_key)
     };
 
     // Listen on all interfaces and whatever port the OS assigns
     let addr = libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
     println!("Listening on {:?}", addr);
 
-    // Reach out to another node
+    // Reach out to another node if specified
     if let Some(to_dial) = std::env::args().nth(1) {
         let dialing = to_dial.clone();
         match to_dial.parse() {
@@ -104,7 +138,7 @@ fn main() {
     tokio::run(futures::future::poll_fn(move || -> Result<_, ()> {
         loop {
             match framed_stdin.poll().expect("Error while polling stdin") {
-                Async::Ready(Some(line)) => swarm.publish(&floodsub_topic, line.as_bytes()),
+                Async::Ready(Some(line)) => swarm.floodsub.publish(&floodsub_topic, line.as_bytes()),
                 Async::Ready(None) => panic!("Stdin closed"),
                 Async::NotReady => break,
             };
@@ -112,8 +146,8 @@ fn main() {
 
         loop {
             match swarm.poll().expect("Error while polling swarm") {
-                Async::Ready(Some(message)) => {
-                    println!("Received: {:?}", String::from_utf8_lossy(&message.data));
+                Async::Ready(Some(_)) => {
+                    
                 },
                 Async::Ready(None) | Async::NotReady => break,
             }
